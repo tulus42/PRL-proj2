@@ -35,26 +35,6 @@ void print_matrix(matrix mat) {
     }
 }
 
-void master_proc(mat_line mat1, mat_line mat2, int length) {
-    // print_line(mat1);
-    // print_line(mat2);
-}
-
-void first_x_proc() {
-
-}
-
-void first_y_proc() {
-
-}
-
-void other_procs() {
-
-}
-
-matrix last_proc() {
-
-}
 
 
 matrix transpose_mat(matrix mat) {
@@ -71,25 +51,56 @@ matrix transpose_mat(matrix mat) {
     return result;
 }
 
-matrix do_multiplication(int rank, int size, matrix mat1, matrix mat2, int length) {
+void do_multiplication(int rank, int size, int length_of_input, int len_mat2) {
     int x = rank / 2;
     int y = rank % 2;
     
 
-    if (rank == MASTER) {
-        mat2 = transpose_mat(mat2);
-        master_proc(mat1[0], mat2[0], length);
-    // } else if (x == 0) {
-    //     first_x_proc();
-    // } else if (y == 0) {
-    //     first_y_proc();
-    // } else if (rank == size-1) {
-    //     last_proc();
-    // } else {
-    //     other_procs();
-    }
+    int my_cell = 0;
+    int rcvd_val_L;
+    int rcvd_val_T;
 
-    return mat1;
+    for (int i=0; i < length_of_input; i++) {
+        // RECEIVE *****************
+        // axis X - receive from left neighbour
+        if (rank - 1 < 0 || rank % len_mat2 == 0) {
+            MPI_Recv(&rcvd_val_L, 1, MPI_INT, MASTER, i, COMM, nullptr);
+        } else {
+            MPI_Recv(&rcvd_val_L, 1, MPI_INT, rank-1, i, COMM, nullptr);
+        }
+
+        // axis Y - receive from top neighbour
+        if (rank - len_mat2 < 0) {
+            MPI_Recv(&rcvd_val_T, 1, MPI_INT, MASTER, i+200, COMM, nullptr);
+        } else {
+            MPI_Recv(&rcvd_val_T, 1, MPI_INT, rank-len_mat2, i+200, COMM, nullptr);
+        }
+        // *************************
+
+
+        // MULTIPLY #################
+        my_cell += rcvd_val_L * rcvd_val_T;
+        // ##########################
+
+        //cout << "Rank: " << rank << "     " << rcvd_val_L << " " << rcvd_val_T << endl;
+
+        // SEND ********************
+
+        if ((rank+1) % len_mat2 != 0) {
+            //cout << "Rank: " << rank << " SENDING " << rcvd_val_L << " to: " << rank+1 << endl;
+            MPI_Send(&rcvd_val_L, 1, MPI_INT, rank+1, i, COMM);
+        }
+
+        if (rank + len_mat2 < size) {
+            //cout << "Rank: " << rank << " SENDING " << rcvd_val_T << " to: " << rank+len_mat2 << endl;
+            MPI_Send(&rcvd_val_T, 1, MPI_INT, rank+len_mat2, i+200, COMM);
+        }
+        // *************************
+    }
+    
+    // Send result to MASTER
+    MPI_Send(&my_cell, 1, MPI_INT, MASTER, 300, COMM);  
+
 }
 
 
@@ -148,45 +159,69 @@ void distribute_input(int size, matrix mat1, matrix mat2) {
     int length2 = (int)mat2.size();
     int length1 = (int)mat1.size();
 
-    cout << length1 << " " << length2 << endl;
+    // cout << length1 << " " << length2 << endl;
 
-    print_matrix(mat1);
-    print_matrix(mat2);
+    // print_matrix(mat1);
+    // print_matrix(mat2);
 
-    // first row
-    cout << "ROW:\n";
-    for (int i=0; i < length2; i++) {
-        for (int j=0; j < (int)mat2[0].size(); j++) {
-            cout << mat2[i][j] << endl;
-            MPI_Send(&mat2[i][j], 1, MPI_INT, i, j, COMM);
-        }
-    }
 
     // first column
-    cout << "COL:\n";
+    // cout << "COL:\n";
     for (int i=0; i < length1; i++) {
         // cout << "TU: " << i << endl;
         for (int j=0; j < (int)mat1[0].size(); j++) {
-            // cout << mat1[i][j] << " i:" << i << " j:" << j << endl;
+            // cout << mat1[i][j] << " " << i*length2 << endl;
             MPI_Send(&mat1[i][j], 1, MPI_INT, i*length2, j, COMM);
         }
     }
+
+    // first row
+    // cout << "ROW:\n";
+    for (int i=0; i < length2; i++) {
+        for (int j=0; j < (int)mat2[0].size(); j++) {
+            // cout << mat2[i][j] << " " << i << endl;
+            MPI_Send(&mat2[i][j], 1, MPI_INT, i, j+200, COMM);
+        }
+    }
+
+    
 }
 
-int distribute_input_length(int rank, int size, matrix mat) {
+void distribute_input_length(int rank, int size, matrix mat1, matrix mat2, int* length_of_input, int* length_of_mat2) {
     int len;
+    int len_mat2;
     if (rank == MASTER) {
-        len = (int)mat[0].size();
+        len = (int)mat1[0].size();      // cols in mat1
+        len_mat2 = (int)mat2[0].size(); // cols in mat2
         // mat1 columns == mat2 rows
         for (int i=1; i < size; i++) {
-            MPI_Send(&len, 1, MPI_INT, i, TAG, COMM);
+            MPI_Send(&len, 1, MPI_INT, i, 100, COMM);
+            MPI_Send(&len_mat2, 1, MPI_INT, i, 101, COMM);
         }
 
     } else {
-        MPI_Recv(&len, 1, MPI_INT, MASTER, TAG, COMM, nullptr);
+        MPI_Recv(&len, 1, MPI_INT, MASTER, 100, COMM, nullptr);
+        MPI_Recv(&len_mat2, 1, MPI_INT, MASTER, 101, COMM, nullptr);
     }
 
-    return len;
+    *length_of_input = len;
+    *length_of_mat2 = len_mat2;
+}
+
+
+void handle_result(int size, int mat1_size, int mat2_size) {
+    int rcv;
+    cout << mat1_size << ":" << mat2_size << "\n";
+    for (int i=0; i < size; i++) {
+        MPI_Recv(&rcv, 1, MPI_INT, i, 300, COMM, nullptr);
+        cout << rcv;
+
+        if ((i+1) % mat2_size == 0) {
+            cout << "\n";
+        } else {
+            cout << " ";
+        }
+    }
 }
 
 
@@ -203,20 +238,29 @@ int main(int argc, char** argv) {
     matrix input_mat2;
 
     if (rank == MASTER) {
-        cout << endl;
+
         // TODO Check correct shape of matrixes
         input_mat1 = load_input(MAT1);
         input_mat2 = load_input(MAT2);
     }
 
-    int length_of_intput = distribute_input_length(rank, size, input_mat1);
+    int length_of_input;
+    int length_of_mat2;     // cols in mat2
+    distribute_input_length(rank, size, input_mat1, input_mat2, &length_of_input, &length_of_mat2);
+
+    // cout << "Rank: " << rank << " In_size:" << length_of_input << " Mat2_size:" << length_of_mat2 << endl;
 
     if (rank== MASTER) {
         distribute_input(size, input_mat1, transpose_mat(input_mat2));
     }
 
     // MULTIPLICATION
-    matrix result = do_multiplication(rank, size, input_mat1, input_mat2, length_of_intput);
+    do_multiplication(rank, size, length_of_input, length_of_mat2);
+
+    // handle result
+    if (rank == MASTER) {
+        handle_result(size, (int)input_mat1.size(), (int)input_mat2[0].size());
+    }
 
     MPI_Finalize();
 
