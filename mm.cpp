@@ -17,26 +17,6 @@ using matrix = vector<vector<int>>;
 using mat_line = vector<int>;
 
 
-void print_line(mat_line line) {
-    cout << "LINE:\n";
-    for (int i=0; i < (int)line.size(); i++) {
-        cout << line[i] << " ";
-    }
-    cout << endl;
-}
-
-void print_matrix(matrix mat) {
-    cout << "MATRIX:\n";
-    for (int i=0; i < (int)mat.size(); i++) {
-        for (int j=0; j < (int)mat[0].size(); j++) {
-            cout << mat[i][j] << " ";
-        }
-        cout << endl;
-    }
-}
-
-
-
 matrix transpose_mat(matrix mat) {
     matrix result;
     // cols
@@ -82,17 +62,13 @@ void do_multiplication(int rank, int size, int length_of_input, int len_mat2) {
         my_cell += rcvd_val_L * rcvd_val_T;
         // ##########################
 
-        //cout << "Rank: " << rank << "     " << rcvd_val_L << " " << rcvd_val_T << endl;
-
         // SEND ********************
 
         if ((rank+1) % len_mat2 != 0) {
-            //cout << "Rank: " << rank << " SENDING " << rcvd_val_L << " to: " << rank+1 << endl;
             MPI_Send(&rcvd_val_L, 1, MPI_INT, rank+1, i, COMM);
         }
 
         if (rank + len_mat2 < size) {
-            //cout << "Rank: " << rank << " SENDING " << rcvd_val_T << " to: " << rank+len_mat2 << endl;
             MPI_Send(&rcvd_val_T, 1, MPI_INT, rank+len_mat2, i+200, COMM);
         }
         // *************************
@@ -122,11 +98,6 @@ vector<int> parse_line(string line) {
         line.erase(line.begin());
     }
 
-    // PRINTS
-    // for (int i=0; i < (int)result.size(); i++) {
-    //     cout << result[i] << endl;
-    // }
-
     return result;
 }
 
@@ -144,7 +115,6 @@ matrix load_input(string file_name) {
         size_of_matrix = stoi(line);
 
         while (getline(file, line)) {
-            // cout << "TU: " << line << '\n';
             tmp = parse_line(line);
             input_matrix.push_back(tmp);
         }
@@ -159,27 +129,19 @@ void distribute_input(int size, matrix mat1, matrix mat2) {
     int length2 = (int)mat2.size();
     int length1 = (int)mat1.size();
 
-    // cout << length1 << " " << length2 << endl;
 
-    // print_matrix(mat1);
-    // print_matrix(mat2);
 
 
     // first column
-    // cout << "COL:\n";
     for (int i=0; i < length1; i++) {
-        // cout << "TU: " << i << endl;
         for (int j=0; j < (int)mat1[0].size(); j++) {
-            // cout << mat1[i][j] << " " << i*length2 << endl;
             MPI_Send(&mat1[i][j], 1, MPI_INT, i*length2, j, COMM);
         }
     }
 
     // first row
-    // cout << "ROW:\n";
     for (int i=0; i < length2; i++) {
         for (int j=0; j < (int)mat2[0].size(); j++) {
-            // cout << mat2[i][j] << " " << i << endl;
             MPI_Send(&mat2[i][j], 1, MPI_INT, i, j+200, COMM);
         }
     }
@@ -222,6 +184,7 @@ void handle_result(int size, int mat1_size, int mat2_size) {
             cout << " ";
         }
     }
+
 }
 
 
@@ -230,16 +193,17 @@ int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
     int rank;
     int size;
+    
 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+
 
     matrix input_mat1;
     matrix input_mat2;
 
     if (rank == MASTER) {
 
-        // TODO Check correct shape of matrixes
         input_mat1 = load_input(MAT1);
         input_mat2 = load_input(MAT2);
     }
@@ -248,7 +212,6 @@ int main(int argc, char** argv) {
     int length_of_mat2;     // cols in mat2
     distribute_input_length(rank, size, input_mat1, input_mat2, &length_of_input, &length_of_mat2);
 
-    // cout << "Rank: " << rank << " In_size:" << length_of_input << " Mat2_size:" << length_of_mat2 << endl;
 
     if (rank== MASTER) {
         distribute_input(size, input_mat1, transpose_mat(input_mat2));
