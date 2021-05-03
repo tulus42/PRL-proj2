@@ -16,7 +16,7 @@ using namespace std;
 using matrix = vector<vector<int>>;
 using mat_line = vector<int>;
 
-
+// transpose the matrix (eg. from 2x3 -> 3x2)
 matrix transpose_mat(matrix mat) {
     matrix result;
     // cols
@@ -31,6 +31,8 @@ matrix transpose_mat(matrix mat) {
     return result;
 }
 
+
+// multiply and add
 void do_multiplication(int rank, int size, int length_of_input, int len_mat2) {
     int x = rank / 2;
     int y = rank % 2;
@@ -40,6 +42,7 @@ void do_multiplication(int rank, int size, int length_of_input, int len_mat2) {
     int rcvd_val_L;
     int rcvd_val_T;
 
+    // length of input is the common size of matrixes
     for (int i=0; i < length_of_input; i++) {
         // RECEIVE *****************
         // axis X - receive from left neighbour
@@ -58,16 +61,17 @@ void do_multiplication(int rank, int size, int length_of_input, int len_mat2) {
         // *************************
 
 
-        // MULTIPLY #################
+        // MULTIPLY and ADD #################
         my_cell += rcvd_val_L * rcvd_val_T;
         // ##########################
 
         // SEND ********************
-
+        // axis X - send to right neighbour
         if ((rank+1) % len_mat2 != 0) {
             MPI_Send(&rcvd_val_L, 1, MPI_INT, rank+1, i, COMM);
         }
 
+        // axis Y - sned to bottom neighbour
         if (rank + len_mat2 < size) {
             MPI_Send(&rcvd_val_T, 1, MPI_INT, rank+len_mat2, i+200, COMM);
         }
@@ -79,7 +83,7 @@ void do_multiplication(int rank, int size, int length_of_input, int len_mat2) {
 
 }
 
-
+// parse input line - create vector of numbers
 vector<int> parse_line(string line) {
     vector<int> result;
     string tmp = "";
@@ -101,7 +105,7 @@ vector<int> parse_line(string line) {
     return result;
 }
 
-
+// load input file into matrix
 matrix load_input(string file_name) {
     string line;
     ifstream file (file_name);
@@ -125,12 +129,12 @@ matrix load_input(string file_name) {
     return input_matrix;
 }
 
+// send input values to top and left processors
+// - these processors don't have left or top neighbour
+// - they need to get input from master
 void distribute_input(int size, matrix mat1, matrix mat2) {
     int length2 = (int)mat2.size();
     int length1 = (int)mat1.size();
-
-
-
 
     // first column
     for (int i=0; i < length1; i++) {
@@ -149,6 +153,8 @@ void distribute_input(int size, matrix mat1, matrix mat2) {
     
 }
 
+// send input length to all processors so they will know
+// how long should they iterate trought the incomming messages
 void distribute_input_length(int rank, int size, matrix mat1, matrix mat2, int* length_of_input, int* length_of_mat2) {
     int len;
     int len_mat2;
@@ -170,7 +176,7 @@ void distribute_input_length(int rank, int size, matrix mat1, matrix mat2, int* 
     *length_of_mat2 = len_mat2;
 }
 
-
+// master process prints whole matrix to stdout
 void handle_result(int size, int mat1_size, int mat2_size) {
     int rcv;
     cout << mat1_size << ":" << mat2_size << "\n";
@@ -187,32 +193,34 @@ void handle_result(int size, int mat1_size, int mat2_size) {
 
 }
 
-
+// *main*
 int main(int argc, char** argv) {
-
+    // init processes
     MPI_Init(&argc, &argv);
     int rank;
     int size;
     
-
+    // get rank and size
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-
+    // init input matrixes
     matrix input_mat1;
     matrix input_mat2;
 
+    // master loads input from files
     if (rank == MASTER) {
 
         input_mat1 = load_input(MAT1);
         input_mat2 = load_input(MAT2);
     }
 
+    // master distribute sizes of matrixes to other processes
     int length_of_input;
     int length_of_mat2;     // cols in mat2
     distribute_input_length(rank, size, input_mat1, input_mat2, &length_of_input, &length_of_mat2);
 
-
+    // master distribute input lines/rows to top/left processes
     if (rank== MASTER) {
         distribute_input(size, input_mat1, transpose_mat(input_mat2));
     }
